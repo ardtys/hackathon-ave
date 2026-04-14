@@ -24,21 +24,27 @@ function isSolana(addr: string) {
   return !addr.startsWith('0x') && addr.length >= 32;
 }
 
-function AssetRow({ asset, onSell }: { asset: Asset; onSell: (symbol: string) => void }) {
+function AssetIcon({ asset }: { asset: Asset }) {
   const [imgError, setImgError] = useState(false);
   const dexChain = asset.chain === 'bsc' ? 'bsc' : asset.chain === 'base' ? 'base' : asset.chain;
   const imgSrc = `https://dd.dexscreener.com/ds-data/tokens/${dexChain}/${asset.address}.png`;
+  return (
+    <div className="w-8 h-8 rounded-full bg-black border border-gray-800 flex items-center justify-center overflow-hidden shrink-0">
+      {imgError
+        ? <Activity className="w-4 h-4 text-gray-500" />
+        : <img src={imgSrc} alt={asset.symbol} className="w-full h-full object-cover" onError={() => setImgError(true)} />
+      }
+    </div>
+  );
+}
 
+// Desktop table row
+function AssetRow({ asset, onSell }: { asset: Asset; onSell: (symbol: string) => void }) {
   return (
     <tr className="hover:bg-white/5 transition-colors group">
       <td className="px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-black border border-gray-800 flex items-center justify-center overflow-hidden shrink-0 group-hover:border-gray-600 transition-colors">
-            {imgError
-              ? <Activity className="w-4 h-4 text-gray-500" />
-              : <img src={imgSrc} alt={asset.symbol} className="w-full h-full object-cover" onError={() => setImgError(true)} />
-            }
-          </div>
+          <AssetIcon asset={asset} />
           <div>
             <div className="text-white font-bold text-sm flex items-center gap-2">
               {asset.symbol}
@@ -52,10 +58,9 @@ function AssetRow({ asset, onSell }: { asset: Asset; onSell: (symbol: string) =>
       <td className="px-6 py-4 text-right font-bold font-mono text-sm">
         {asset.value > 0
           ? <span className="text-white">${asset.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          : <span className="text-gray-600">—</span>
-        }
+          : <span className="text-gray-600">—</span>}
       </td>
-      <td className={`px-6 py-4 text-right font-bold font-mono text-sm`}>
+      <td className="px-6 py-4 text-right font-bold font-mono text-sm">
         {asset.change !== 0 ? (
           <span className={asset.change >= 0 ? 'text-neon-green' : 'text-neon-red'}>
             <span className="flex items-center justify-end gap-1">
@@ -67,21 +72,54 @@ function AssetRow({ asset, onSell }: { asset: Asset; onSell: (symbol: string) =>
       </td>
       <td className="px-6 py-4 text-center">
         <div className="flex items-center justify-center gap-2">
-          <Link
-            href={`/sniper?address=${asset.address}&chain=${asset.chain}`}
-            className="text-[10px] border border-gray-700 bg-black text-gray-300 hover:text-neon-green hover:border-neon-green px-2.5 py-1 rounded transition-colors uppercase tracking-widest"
-          >
+          <Link href={`/sniper?address=${asset.address}&chain=${asset.chain}`}
+            className="text-[10px] border border-gray-700 bg-black text-gray-300 hover:text-neon-green hover:border-neon-green px-2.5 py-1 rounded transition-colors uppercase tracking-widest">
             Snipe
           </Link>
-          <button
-            onClick={() => onSell(asset.symbol)}
-            className="text-[10px] border border-gray-700 bg-black text-gray-300 hover:text-neon-red hover:border-neon-red px-2.5 py-1 rounded transition-colors uppercase tracking-widest"
-          >
+          <button onClick={() => onSell(asset.symbol)}
+            className="text-[10px] border border-gray-700 bg-black text-gray-300 hover:text-neon-red hover:border-neon-red px-2.5 py-1 rounded transition-colors uppercase tracking-widest">
             Sell
           </button>
         </div>
       </td>
     </tr>
+  );
+}
+
+// Mobile card
+function AssetCard({ asset, onSell }: { asset: Asset; onSell: (symbol: string) => void }) {
+  return (
+    <div className="flex items-center gap-3 p-4 border-b border-gray-800/50 last:border-0">
+      <AssetIcon asset={asset} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-white font-bold text-sm">{asset.symbol}</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-900 text-gray-500 uppercase">{asset.chain}</span>
+        </div>
+        <div className="text-[10px] text-gray-500 truncate">{asset.balance}</div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className="text-sm font-bold font-mono text-white">
+          {asset.value > 0 ? `$${asset.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+        </div>
+        {asset.change !== 0 && (
+          <div className={`text-[10px] font-mono flex items-center justify-end gap-0.5 ${asset.change >= 0 ? 'text-neon-green' : 'text-neon-red'}`}>
+            {asset.change >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+            {asset.change > 0 ? '+' : ''}{asset.change.toFixed(2)}%
+          </div>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5 shrink-0 ml-1">
+        <Link href={`/sniper?address=${asset.address}&chain=${asset.chain}`}
+          className="text-[10px] border border-gray-700 bg-black text-gray-300 hover:text-neon-green hover:border-neon-green px-2 py-1 rounded transition-colors uppercase tracking-widest text-center">
+          Snipe
+        </Link>
+        <button onClick={() => onSell(asset.symbol)}
+          className="text-[10px] border border-gray-700 bg-black text-gray-300 hover:text-neon-red hover:border-neon-red px-2 py-1 rounded transition-colors uppercase tracking-widest">
+          Sell
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -307,14 +345,23 @@ export default function PortfolioDashboard() {
             </div>
           )}
 
-          {/* Assets table */}
+          {/* Assets — cards on mobile, table on desktop */}
           {!loading && assets.length > 0 && (
             <div className="bg-[#0A0A0B] rounded-xl border border-gray-800/80 shadow-lg relative z-10 overflow-hidden">
-              <div className="bg-[#111] px-6 py-4 border-b border-gray-800 flex items-center justify-between">
+              <div className="bg-[#111] px-4 md:px-6 py-4 border-b border-gray-800 flex items-center justify-between">
                 <h3 className="text-sm text-white uppercase tracking-widest font-bold">Asset Breakdown</h3>
                 <span className="text-[10px] text-gray-500 font-mono">{assets.length} token{assets.length !== 1 ? 's' : ''}</span>
               </div>
-              <div className="overflow-x-auto">
+
+              {/* Mobile card list */}
+              <div className="sm:hidden">
+                {assets.map(asset => (
+                  <AssetCard key={`${asset.chain}-${asset.address}`} asset={asset} onSell={handleSell} />
+                ))}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-left text-sm font-mono">
                   <thead>
                     <tr className="border-b border-gray-800/50 text-[10px] text-gray-500 uppercase tracking-widest bg-black/40">

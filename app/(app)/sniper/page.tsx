@@ -48,6 +48,8 @@ function SniperContent() {
   const [status, setStatus] = useState("MONITORING");
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [offchainData, setOffchainData] = useState<any>(null);
+  const [securityData, setSecurityData] = useState<any>(null);
+  const [fundamentalData, setFundamentalData] = useState<any>(null);
   const [chartData, setChartData] = useState<any[]>(generateMockData());
   const [logs, setLogs] = useState<string[]>([
     `Ready. Paste a contract address and click Analyze.`
@@ -95,7 +97,11 @@ function SniperContent() {
     addLog(`Fetching data for ${address}...`, 'EXEC');
     addLog(`Running scoring engine...`, 'INFO');
 
-    // Fetch offchain data in parallel
+    // Reset previous results
+    setSecurityData(null);
+    setFundamentalData(null);
+
+    // Fetch offchain metadata in parallel (DexScreener)
     fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`)
       .then(res => res.json())
       .then(dex => {
@@ -112,6 +118,19 @@ function SniperContent() {
          }
       })
       .catch(() => addLog(`DexScreener metadata unavailable.`, 'WARN'));
+
+    // On-chain security scan (GoPlus + holder distribution)
+    fetch(`/api/security/${address}?chain=${chain}`)
+      .then(res => res.json())
+      .then(sec => {
+        setSecurityData(sec);
+        if (sec.flags.length > 0) {
+          addLog(`Security flags: ${sec.flags.join(', ')}`, 'WARN');
+        } else {
+          addLog(`Security scan: ${sec.security_score}/100 — no flags detected.`, 'INFO');
+        }
+      })
+      .catch(() => addLog(`Security scan unavailable.`, 'WARN'));
 
     try {
       let res;
@@ -144,7 +163,18 @@ function SniperContent() {
       setAnalysisResult(data);
       addLog(`Score: ${data.total_score} — Signal: ${data.signal}`, 'EXEC');
       addLog(`Stop-loss set at ${data.initial_sl.toFixed(8)}`, 'WARN');
-      
+
+      // Fundamental analysis from DexScreener
+      fetch(`/api/fundamental/${address}`)
+        .then(r => r.json())
+        .then(f => {
+          setFundamentalData(f);
+          if (f.available) {
+            addLog(`Fundamental score: ${f.fundamental_score}/100 — ${f.grade}`, 'INFO');
+          }
+        })
+        .catch(() => {});
+
       // Update chart data with real candles — compute per-candle indicators
       if (data.api_candles && data.api_candles.length > 0) {
         const candles: any[] = data.api_candles;
@@ -280,52 +310,59 @@ function SniperContent() {
       </header>
 
       {/* Target Acquisition Bar */}
-      <section className="relative z-10 flex flex-col md:flex-row gap-3 bg-[var(--color-panel-bg)]/80 backdrop-blur-md p-4 rounded-xl border border-gray-800 shadow-2xl">
-        <div className="flex-1 relative flex items-center group">
-          <Crosshair className="absolute left-3 w-5 h-5 text-gray-500 group-focus-within:text-[var(--color-neon-green)] transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Paste contract address..."
-            className="w-full bg-[#050505] border border-gray-800 p-3 pl-10 rounded font-mono text-sm focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green transition-all shadow-inner text-neon-green"
-            value={address}
-            onChange={(e) => setAddress(e.target.value.trim())}
-          />
+      <section className="relative z-10 bg-[var(--color-panel-bg)]/80 backdrop-blur-md p-3 md:p-4 rounded-xl border border-gray-800 shadow-2xl">
+        {/* Row 1: address input + chain/timeframe selects */}
+        <div className="flex gap-2 mb-2">
+          <div className="flex-1 relative flex items-center group min-w-0">
+            <Crosshair className="absolute left-3 w-4 h-4 text-gray-500 group-focus-within:text-neon-green transition-colors shrink-0" />
+            <input
+              type="text"
+              placeholder="Paste contract address..."
+              className="w-full bg-[#050505] border border-gray-800 p-2.5 pl-9 rounded font-mono text-xs md:text-sm focus:outline-none focus:border-neon-green focus:ring-1 focus:ring-neon-green transition-all shadow-inner text-neon-green"
+              value={address}
+              onChange={(e) => setAddress(e.target.value.trim())}
+            />
+          </div>
+          <select
+            className="bg-[#050505] border border-gray-800 p-2.5 rounded text-xs md:text-sm focus:outline-none focus:border-neon-green font-mono hover:bg-[#111] transition-colors shrink-0"
+            value={chain}
+            onChange={(e) => setChain(e.target.value)}
+          >
+            <option value="solana">SOL</option>
+            <option value="base">Base</option>
+            <option value="bsc">BSC</option>
+          </select>
+          <select
+            className="bg-[#050505] border border-gray-800 p-2.5 rounded text-xs md:text-sm focus:outline-none focus:border-neon-green font-mono hover:bg-[#111] transition-colors shrink-0"
+            value={timeframe}
+            onChange={(e) => setTimeframe(e.target.value)}
+          >
+            <option value="1m">1m</option>
+            <option value="5m">5m</option>
+            <option value="15m">15m</option>
+          </select>
         </div>
-        <select 
-          className="bg-[#050505] border border-gray-800 p-3 rounded text-sm focus:outline-none focus:border-[var(--color-neon-green)] font-mono hover:bg-[#111] transition-colors"
-          value={chain}
-          onChange={(e) => setChain(e.target.value)}
-        >
-          <option value="solana">Solana</option>
-          <option value="base">Base</option>
-          <option value="bsc">BSC</option>
-        </select>
-        <select 
-          className="bg-[#050505] border border-gray-800 p-3 rounded text-sm focus:outline-none focus:border-[var(--color-neon-green)] font-mono hover:bg-[#111] transition-colors"
-          value={timeframe}
-          onChange={(e) => setTimeframe(e.target.value)}
-        >
-          <option value="1m">1 min</option>
-          <option value="5m">5 min</option>
-          <option value="15m">15 min</option>
-        </select>
-        <button 
-          onClick={onAnalyze}
-          disabled={status === "COMPUTING"}
-          className="relative overflow-hidden bg-[#050505] text-neon-green border border-neon-green px-10 py-3 rounded font-bold tracking-widest uppercase transition-all flex items-center gap-3 group hover:bg-neon-green/5 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <div className="absolute inset-0 bg-[var(--color-neon-green)] opacity-0 group-hover:opacity-10 transition-opacity"></div>
-          {status === "COMPUTING" ? <ShieldCheck className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 group-hover:scale-110 transition-transform" />}
-          {status === "COMPUTING" ? "Analyzing..." : "Analyze"}
-        </button>
-        <button
-          onClick={handleAutoTradeToggle}
-          title={!walletAddress && !autoTrade ? 'Connect wallet in Settings first' : undefined}
-          className={`px-4 py-3 border rounded flex items-center gap-2 font-semibold transition-all uppercase text-xs ${autoTrade ? 'border-neon-green text-neon-green bg-neon-green/5' : !walletAddress ? 'border-gray-800 text-gray-700 bg-black cursor-not-allowed' : 'border-gray-800 text-gray-500 hover:border-gray-600 bg-black'}`}
-        >
-          {autoTrade ? <Zap className="w-4 h-4" /> : <Wallet className="w-4 h-4" />}
-          {autoTrade ? 'Auto: On' : !walletAddress ? 'No Wallet' : 'Auto: Off'}
-        </button>
+        {/* Row 2: action buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={onAnalyze}
+            disabled={status === "COMPUTING"}
+            className="relative overflow-hidden flex-1 bg-[#050505] text-neon-green border border-neon-green px-4 py-2.5 rounded font-bold tracking-widest uppercase text-xs transition-all flex items-center justify-center gap-2 group hover:bg-neon-green/5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="absolute inset-0 bg-neon-green opacity-0 group-hover:opacity-10 transition-opacity" />
+            {status === "COMPUTING" ? <ShieldCheck className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 group-hover:scale-110 transition-transform" />}
+            {status === "COMPUTING" ? "Analyzing..." : "Analyze"}
+          </button>
+          <button
+            onClick={handleAutoTradeToggle}
+            title={!walletAddress && !autoTrade ? 'Connect wallet in Settings first' : undefined}
+            className={`px-3 py-2.5 border rounded flex items-center gap-1.5 font-semibold transition-all uppercase text-xs shrink-0 ${autoTrade ? 'border-neon-green text-neon-green bg-neon-green/5' : !walletAddress ? 'border-gray-800 text-gray-700 bg-black cursor-not-allowed' : 'border-gray-800 text-gray-500 hover:border-gray-600 bg-black'}`}
+          >
+            {autoTrade ? <Zap className="w-3.5 h-3.5" /> : <Wallet className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{autoTrade ? 'Auto: On' : !walletAddress ? 'No Wallet' : 'Auto: Off'}</span>
+            <span className="sm:hidden">{autoTrade ? 'ON' : !walletAddress ? '—' : 'OFF'}</span>
+          </button>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 flex-1 relative z-10">
@@ -345,7 +382,7 @@ function SniperContent() {
                   <span className="text-xs font-medium text-white/50">Signal</span>
                 </div>
                 <div className="flex items-baseline gap-4">
-                  <span className="text-6xl font-black tracking-tighter drop-shadow-lg">{analysisResult.signal}</span>
+                  <span className="text-4xl md:text-6xl font-black tracking-tighter drop-shadow-lg">{analysisResult.signal}</span>
                   <div className="flex flex-col gap-1 border-l-2 pl-4 border-current">
                     <span className="text-xl font-bold opacity-80">SCORE: {analysisResult.total_score}/10</span>
                     {analysisResult.tier && (
@@ -359,24 +396,219 @@ function SniperContent() {
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center md:text-left z-10 w-full md:w-auto">
-                <div className="bg-black/50 p-4 rounded-lg border border-white/10 flex flex-col hover:border-white/30 transition-colors">
-                  <span className="text-[10px] text-gray-500 tracking-wider mb-1 flex items-center gap-1 justify-center md:justify-start"><Eye className="w-3 h-3"/> ENTRY POINT</span>
-                  <span className="text-xl font-mono font-bold text-white shadow-black drop-shadow-md">{analysisResult.entry_price?.toFixed(8)}</span>
+              <div className="grid grid-cols-3 gap-2 md:gap-6 text-center md:text-left z-10 w-full md:w-auto">
+                <div className="bg-black/50 p-2 md:p-4 rounded-lg border border-white/10 flex flex-col hover:border-white/30 transition-colors min-w-0">
+                  <span className="text-[9px] md:text-[10px] text-gray-500 tracking-wider mb-1 flex items-center gap-1 justify-center md:justify-start"><Eye className="w-3 h-3"/> ENTRY</span>
+                  <span className="text-sm md:text-xl font-mono font-bold text-white drop-shadow-md truncate">{analysisResult.entry_price?.toFixed(6)}</span>
                 </div>
-                <div className="bg-[var(--color-neon-green)]/10 p-4 rounded-lg border border-[var(--color-neon-green)]/30 flex flex-col hover:bg-[var(--color-neon-green)]/20 transition-colors">
-                  <span className="text-[10px] text-[var(--color-neon-green)] tracking-wider mb-1">Take Profit</span>
-                  <span className="text-xl font-mono font-bold text-[var(--color-neon-green)] drop-shadow-md">{analysisResult.tp1?.toFixed(8)}</span>
-                  <span className="text-xs font-mono text-white/60">TP2: {analysisResult.tp2?.toFixed(8)}</span>
+                <div className="bg-neon-green/10 p-2 md:p-4 rounded-lg border border-neon-green/30 flex flex-col hover:bg-neon-green/20 transition-colors min-w-0">
+                  <span className="text-[9px] md:text-[10px] text-neon-green tracking-wider mb-1">Take Profit</span>
+                  <span className="text-sm md:text-xl font-mono font-bold text-neon-green drop-shadow-md truncate">{analysisResult.tp1?.toFixed(6)}</span>
+                  <span className="text-[10px] font-mono text-white/60 hidden sm:block">TP2: {analysisResult.tp2?.toFixed(6)}</span>
                   {analysisResult.tp3 && (
-                    <span className="text-xs font-mono text-[var(--color-neon-green)]/70 mt-0.5">TP3: {analysisResult.tp3?.toFixed(8)}</span>
+                    <span className="text-[10px] font-mono text-neon-green/70 mt-0.5 hidden sm:block">TP3: {analysisResult.tp3?.toFixed(6)}</span>
                   )}
                 </div>
-                <div className="bg-[var(--color-neon-red)]/10 p-4 rounded-lg border border-[var(--color-neon-red)]/30 flex flex-col hover:bg-[var(--color-neon-red)]/20 transition-colors">
-                  <span className="text-[10px] text-[var(--color-neon-red)] tracking-wider mb-1 flex items-center gap-1 justify-center md:justify-start"><AlertTriangle className="w-3 h-3"/> STOP LOSS</span>
-                  <span className="text-xl font-mono font-bold text-[var(--color-neon-red)] drop-shadow-md">{analysisResult.initial_sl?.toFixed(8)}</span>
-                  <span className="text-[10px] text-white/40 uppercase mt-1">Trail SL @ BE after TP1</span>
+                <div className="bg-neon-red/10 p-2 md:p-4 rounded-lg border border-neon-red/30 flex flex-col hover:bg-neon-red/20 transition-colors min-w-0">
+                  <span className="text-[9px] md:text-[10px] text-neon-red tracking-wider mb-1 flex items-center gap-1 justify-center md:justify-start"><AlertTriangle className="w-3 h-3"/> STOP LOSS</span>
+                  <span className="text-sm md:text-xl font-mono font-bold text-neon-red drop-shadow-md truncate">{analysisResult.initial_sl?.toFixed(6)}</span>
+                  <span className="text-[9px] text-white/40 uppercase mt-1 hidden sm:block">Trail @ BE after TP1</span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* On-Chain Security + Off-Chain Fundamental */}
+          {(securityData || fundamentalData) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* On-Chain Security Panel */}
+              {securityData && (
+                <div className="bg-[#0A0A0B] p-5 rounded-xl border border-gray-800/80 shadow-lg">
+                  <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4 flex items-center gap-2">
+                    <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-neon-green)]"/>
+                    On-Chain Security
+                    <span className={`ml-auto text-sm font-black ${securityData.security_score >= 80 ? 'text-[var(--color-neon-green)]' : securityData.security_score >= 50 ? 'text-yellow-400' : 'text-[var(--color-neon-red)]'}`}>
+                      {securityData.security_score}/100
+                    </span>
+                  </h3>
+
+                  {securityData.flags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 mb-4">
+                      {securityData.flags.map((flag: string) => (
+                        <span key={flag} className="text-[10px] bg-red-950/50 border border-red-800/50 text-red-400 px-2 py-0.5 rounded font-mono">{flag}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-[var(--color-neon-green)] mb-4 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3 h-3"/> No security flags detected
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-1.5 text-[10px] mb-4">
+                    <div className="bg-black/40 rounded p-2 flex justify-between items-center">
+                      <span className="text-gray-500">Honeypot</span>
+                      <span className={`font-bold ${securityData.is_honeypot ? 'text-[var(--color-neon-red)]' : 'text-[var(--color-neon-green)]'}`}>{securityData.is_honeypot ? '⚠ YES' : '✓ NO'}</span>
+                    </div>
+                    <div className="bg-black/40 rounded p-2 flex justify-between items-center">
+                      <span className="text-gray-500">Open Source</span>
+                      <span className={`font-bold ${securityData.is_open_source ? 'text-[var(--color-neon-green)]' : 'text-yellow-400'}`}>{securityData.is_open_source ? '✓ YES' : '— NO'}</span>
+                    </div>
+                    <div className="bg-black/40 rounded p-2 flex justify-between items-center">
+                      <span className="text-gray-500">Buy Tax</span>
+                      <span className={`font-bold ${Number(securityData.buy_tax) > 10 ? 'text-[var(--color-neon-red)]' : 'text-white'}`}>{securityData.buy_tax}%</span>
+                    </div>
+                    <div className="bg-black/40 rounded p-2 flex justify-between items-center">
+                      <span className="text-gray-500">Sell Tax</span>
+                      <span className={`font-bold ${Number(securityData.sell_tax) > 10 ? 'text-[var(--color-neon-red)]' : 'text-white'}`}>{securityData.sell_tax}%</span>
+                    </div>
+                    {securityData.liquidity_locked !== null && (
+                      <div className="bg-black/40 rounded p-2 flex justify-between items-center col-span-2">
+                        <span className="text-gray-500">Liquidity Lock</span>
+                        <span className={`font-bold ${securityData.liquidity_locked ? 'text-[var(--color-neon-green)]' : 'text-yellow-400'}`}>{securityData.liquidity_locked ? '🔒 LOCKED' : '🔓 UNLOCKED'}</span>
+                      </div>
+                    )}
+                    {securityData.holder_count && (
+                      <div className="bg-black/40 rounded p-2 flex justify-between items-center col-span-2">
+                        <span className="text-gray-500">Holder Count</span>
+                        <span className="font-bold text-white">{Number(securityData.holder_count).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {securityData.top_holders && securityData.top_holders.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-gray-500 mb-2 uppercase tracking-wider">Whale Distribution (Top Holders)</div>
+                      <div className="space-y-1.5">
+                        {securityData.top_holders.slice(0, 5).map((h: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-[10px]">
+                            <span className="text-gray-600 w-4 shrink-0">#{i + 1}</span>
+                            <span className="font-mono text-gray-400 truncate flex-1">{h.address?.slice(0, 6)}…{h.address?.slice(-4)}</span>
+                            <div className="w-16 bg-gray-800 rounded-full h-1 overflow-hidden shrink-0">
+                              <div
+                                className={`h-full rounded-full ${Number(h.percent) > 10 ? 'bg-red-500' : 'bg-[var(--color-neon-green)]'}`}
+                                style={{ width: `${Math.min(100, Number(h.percent) * 5)}%` }}
+                              />
+                            </div>
+                            <span className={`font-bold w-10 text-right shrink-0 ${Number(h.percent) > 10 ? 'text-yellow-400' : 'text-white'}`}>{h.percent}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Off-Chain Fundamental Panel */}
+              <div className="bg-[#0A0A0B] p-5 rounded-xl border border-gray-800/80 shadow-lg">
+                <h3 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4 flex items-center gap-2">
+                  <Database className="w-3.5 h-3.5 text-[var(--color-neon-green)]"/>
+                  Fundamental Analysis
+                  {fundamentalData?.available && (
+                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded border ${
+                      fundamentalData.grade === 'STRONG' ? 'text-[var(--color-neon-green)] border-[var(--color-neon-green)]/50 bg-green-950/30' :
+                      fundamentalData.grade === 'GOOD'   ? 'text-sky-400 border-sky-400/50 bg-sky-950/30' :
+                      fundamentalData.grade === 'FAIR'   ? 'text-yellow-400 border-yellow-400/50 bg-yellow-950/30' :
+                                                           'text-[var(--color-neon-red)] border-[var(--color-neon-red)]/50 bg-red-950/30'
+                    }`}>{fundamentalData.grade}</span>
+                  )}
+                </h3>
+
+                {fundamentalData?.available ? (
+                  <div>
+                    {/* Score bar */}
+                    <div className="mb-4">
+                      <div className="flex justify-between items-end mb-1">
+                        <span className="text-[10px] text-gray-500 uppercase tracking-wider">Fundamental Score</span>
+                        <span className={`text-2xl font-black ${fundamentalData.fundamental_score >= 60 ? 'text-[var(--color-neon-green)]' : fundamentalData.fundamental_score >= 40 ? 'text-yellow-400' : 'text-[var(--color-neon-red)]'}`}>
+                          {fundamentalData.fundamental_score}<span className="text-sm text-gray-600">/100</span>
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-800 rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${fundamentalData.fundamental_score >= 60 ? 'bg-[var(--color-neon-green)]' : fundamentalData.fundamental_score >= 40 ? 'bg-yellow-400' : 'bg-[var(--color-neon-red)]'}`}
+                          style={{ width: `${fundamentalData.fundamental_score}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Score breakdown */}
+                    <div className="space-y-1.5 mb-4">
+                      {[
+                        { key: 'liquidity', label: 'Liquidity',    fmt: (v: number) => `$${v >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}` },
+                        { key: 'volume',    label: 'Volume 24h',   fmt: (v: number) => `$${v >= 1000 ? (v/1000).toFixed(0)+'K' : v.toFixed(0)}` },
+                        { key: 'momentum',  label: 'Momentum',     fmt: (_v: number) => fundamentalData.breakdown.momentum.label },
+                        { key: 'age',       label: 'Token Age',    fmt: (_v: number) => fundamentalData.breakdown.age.label },
+                        { key: 'social',    label: 'Social',       fmt: (_v: any) => fundamentalData.breakdown.social.breakdown.join(', ') || 'None' },
+                        { key: 'buysell',   label: 'Buy Pressure', fmt: (_v: any) => fundamentalData.breakdown.buysell.label },
+                      ].map(({ key, label, fmt }) => {
+                        const b = fundamentalData.breakdown[key];
+                        const pct = (b.pts / b.max) * 100;
+                        return (
+                          <div key={key} className="flex items-center gap-2 text-[10px]">
+                            <span className="text-gray-500 w-20 shrink-0">{label}</span>
+                            <div className="flex-1 bg-gray-800 rounded-full h-1 overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${pct >= 70 ? 'bg-[var(--color-neon-green)]' : pct >= 40 ? 'bg-yellow-400' : 'bg-gray-600'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-gray-400 w-5 text-right shrink-0">{b.pts}</span>
+                            <span className="text-gray-600 shrink-0">/{b.max}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Key metrics */}
+                    <div className="grid grid-cols-2 gap-1.5 text-[10px] mb-3">
+                      {fundamentalData.meta.market_cap && (
+                        <div className="bg-black/40 rounded p-2 flex justify-between">
+                          <span className="text-gray-500">MCAP</span>
+                          <span className="font-bold text-white">${(fundamentalData.meta.market_cap/1000).toFixed(0)}K</span>
+                        </div>
+                      )}
+                      <div className="bg-black/40 rounded p-2 flex justify-between">
+                        <span className="text-gray-500">24h Chg</span>
+                        <span className={`font-bold ${fundamentalData.meta.price_change_24h >= 0 ? 'text-[var(--color-neon-green)]' : 'text-[var(--color-neon-red)]'}`}>
+                          {fundamentalData.meta.price_change_24h >= 0 ? '+' : ''}{Number(fundamentalData.meta.price_change_24h).toFixed(2)}%
+                        </span>
+                      </div>
+                      <div className="bg-black/40 rounded p-2 flex justify-between">
+                        <span className="text-gray-500">DEX</span>
+                        <span className="font-bold text-white capitalize">{fundamentalData.meta.dex}</span>
+                      </div>
+                      {fundamentalData.meta.pair_created_at && (
+                        <div className="bg-black/40 rounded p-2 flex justify-between">
+                          <span className="text-gray-500">Listed</span>
+                          <span className="font-bold text-white">{new Date(fundamentalData.meta.pair_created_at).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Social links */}
+                    {(fundamentalData.meta.websites?.length > 0 || fundamentalData.meta.socials?.length > 0) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {fundamentalData.meta.websites?.[0] && (
+                          <a href={fundamentalData.meta.websites[0].url} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-1 bg-black/40 border border-gray-700 rounded px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:border-gray-500 transition-colors">
+                            🌐 Website
+                          </a>
+                        )}
+                        {fundamentalData.meta.socials?.map((s: any, i: number) => (
+                          <a key={i} href={s.url} target="_blank" rel="noreferrer"
+                            className="flex items-center gap-1 bg-black/40 border border-gray-700 rounded px-2 py-1 text-[10px] text-gray-300 hover:text-white hover:border-gray-500 transition-colors capitalize">
+                            {s.type === 'twitter' ? '𝕏' : s.type === 'telegram' ? '✈' : '🔗'} {s.type}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-600 text-center py-4">
+                    {fundamentalData ? fundamentalData.message : 'Fetching fundamental data...'}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -510,7 +742,7 @@ function SniperContent() {
         </div>
 
         {/* Console / Terminal Section */}
-        <div className="bg-[#050505] p-1 rounded-xl border border-gray-800 shadow-2xl flex flex-col h-[700px] xl:h-[calc(100vh-140px)] relative overflow-hidden group">
+        <div className="bg-[#050505] p-1 rounded-xl border border-gray-800 shadow-2xl flex flex-col h-80 md:h-125 xl:h-[calc(100vh-140px)] relative overflow-hidden group">
           <div className="absolute top-0 inset-x-0 h-10 bg-gradient-to-b from-black to-transparent z-10 pointer-events-none"></div>
           
           <div className="bg-[#111] px-4 py-3 rounded-t-lg border-b border-gray-800 flex justify-between items-center">
