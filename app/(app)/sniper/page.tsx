@@ -116,20 +116,28 @@ function SniperContent() {
     try {
       let res;
       let data;
-      try {
-         // Beri timeout 5 detik agar tidak hang jika Rust backend mati
-         const ctrl = new AbortController();
-         const timer = setTimeout(() => ctrl.abort(), 5000);
-         res = await fetch(`http://localhost:8080/api/analyze/${address}?timeframe=${timeframe}&chain=${chain}`, { signal: ctrl.signal });
-         clearTimeout(timer);
-         if (!res.ok) throw new Error("Rust API failed");
-         data = await res.json();
-         addLog(`Connected to Rust engine.`, 'INFO');
-      } catch (rustErr) {
-         addLog(`Rust engine offline — falling back to API route.`, 'WARN');
-         res = await fetch(`/api/analyze/${address}?timeframe=${timeframe}&chain=${chain}`);
-         if (!res.ok) throw new Error("API Route failed");
-         data = await res.json();
+      const isDev = process.env.NODE_ENV === 'development';
+      if (isDev) {
+        try {
+          // Local dev: coba Rust backend dulu (timeout 5 detik)
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 5000);
+          res = await fetch(`http://localhost:8080/api/analyze/${address}?timeframe=${timeframe}&chain=${chain}`, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error("Rust API failed");
+          data = await res.json();
+          addLog(`Connected to Rust engine.`, 'INFO');
+        } catch {
+          addLog(`Rust engine offline — using Next.js API route.`, 'WARN');
+          res = await fetch(`/api/analyze/${address}?timeframe=${timeframe}&chain=${chain}`);
+          if (!res.ok) throw new Error("API Route failed");
+          data = await res.json();
+        }
+      } else {
+        // Production: langsung pakai Next.js API route
+        res = await fetch(`/api/analyze/${address}?timeframe=${timeframe}&chain=${chain}`);
+        if (!res.ok) throw new Error("API Route failed");
+        data = await res.json();
       }
       
       
