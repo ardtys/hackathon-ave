@@ -172,22 +172,55 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
   }
 
   const isEmergency = volRatio < 0.2 || (vwap !== null && currentPrice < vwap && volRatio > 2);
-  let signal = "WAIT";
-  if (isEmergency) signal = "AVOID";
-  else if (score >= 6) signal = "BUY";
+
+  // Signal — sesuai PDF
+  let signal = "SKIP";
+  if (isEmergency)       signal = "AVOID";
+  else if (score >= 8)   signal = "BUY";       // Aggressive full position
+  else if (score >= 6)   signal = "BUY";       // Moderate half position
+  else if (score >= 3)   signal = "WATCHLIST"; // Tunggu score naik
+  // else score < 3 → "SKIP"
+
+  // TP/SL tier berdasarkan score — sesuai PDF
+  let tp1: number, tp2: number, tp3: number | null, initial_sl: number, tier: string;
+  if (score >= 8) {
+    // Score 8-10 → Aggressive Full Position
+    tp1        = currentPrice * 1.25;   // +25%
+    tp2        = currentPrice * 1.50;   // +50%
+    tp3        = currentPrice * 2.00;   // +100%
+    initial_sl = currentPrice * 0.85;   // -15%
+    tier       = "AGGRESSIVE";
+  } else if (score >= 6) {
+    // Score 6-7 → Moderate Half Position
+    tp1        = currentPrice * 1.20;   // +20%
+    tp2        = currentPrice * 1.40;   // +40%
+    tp3        = null;
+    initial_sl = currentPrice * 0.88;   // -12%
+    tier       = "MODERATE";
+  } else {
+    // Score < 6 → No entry, masih tampilkan level referensi
+    tp1        = currentPrice * 1.20;
+    tp2        = currentPrice * 1.40;
+    tp3        = null;
+    initial_sl = currentPrice * 0.88;
+    tier       = "NO_ENTRY";
+  }
 
   return NextResponse.json({
     total_score: score,
     signal,
+    tier,
     rsi,
     vwap,
     upper_bollinger: bb?.upper,
     lower_bollinger: bb?.lower,
     roc,
+    vol_ratio: volRatio,
     entry_price: currentPrice,
-    tp1: currentPrice * 1.25,
-    tp2: currentPrice * 1.50,
-    initial_sl: currentPrice * 0.85,
+    tp1,
+    tp2,
+    tp3,
+    initial_sl,
     volume_status: `${volRatio.toFixed(1)}x SPIKE DETECTED`,
     bb_status: bbStatus,
     api_candles: candles,

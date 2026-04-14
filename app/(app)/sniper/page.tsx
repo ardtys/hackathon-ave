@@ -346,7 +346,16 @@ function SniperContent() {
                 </div>
                 <div className="flex items-baseline gap-4">
                   <span className="text-6xl font-black tracking-tighter drop-shadow-lg">{analysisResult.signal}</span>
-                  <span className="text-xl font-bold opacity-80 border-l-2 pl-4 border-current">SCORE: {analysisResult.total_score}/10</span>
+                  <div className="flex flex-col gap-1 border-l-2 pl-4 border-current">
+                    <span className="text-xl font-bold opacity-80">SCORE: {analysisResult.total_score}/10</span>
+                    {analysisResult.tier && (
+                      <span className={`text-[10px] font-bold tracking-widest px-2 py-0.5 rounded border self-start ${
+                        analysisResult.tier === 'AGGRESSIVE' ? 'text-[var(--color-neon-green)] border-[var(--color-neon-green)]/50 bg-green-950/40' :
+                        analysisResult.tier === 'MODERATE'   ? 'text-yellow-400 border-yellow-400/50 bg-yellow-950/40' :
+                                                               'text-gray-400 border-gray-600 bg-gray-900/40'
+                      }`}>{analysisResult.tier}</span>
+                    )}
+                  </div>
                 </div>
               </div>
               
@@ -359,6 +368,9 @@ function SniperContent() {
                   <span className="text-[10px] text-[var(--color-neon-green)] tracking-wider mb-1">Take Profit</span>
                   <span className="text-xl font-mono font-bold text-[var(--color-neon-green)] drop-shadow-md">{analysisResult.tp1?.toFixed(8)}</span>
                   <span className="text-xs font-mono text-white/60">TP2: {analysisResult.tp2?.toFixed(8)}</span>
+                  {analysisResult.tp3 && (
+                    <span className="text-xs font-mono text-[var(--color-neon-green)]/70 mt-0.5">TP3: {analysisResult.tp3?.toFixed(8)}</span>
+                  )}
                 </div>
                 <div className="bg-[var(--color-neon-red)]/10 p-4 rounded-lg border border-[var(--color-neon-red)]/30 flex flex-col hover:bg-[var(--color-neon-red)]/20 transition-colors">
                   <span className="text-[10px] text-[var(--color-neon-red)] tracking-wider mb-1 flex items-center gap-1 justify-center md:justify-start"><AlertTriangle className="w-3 h-3"/> STOP LOSS</span>
